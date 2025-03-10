@@ -68,8 +68,26 @@ const clients = {
   }),
 };
 
+const PUBLIC_ROUTES = ["ai/notebooks/published"];
+
+// Check if a path matches any of our public endpoints
+const isPublicEndpoint = (methodArn) => {
+  // methodArn format: arn:aws:execute-api:region:account-id:api-id/stage/HTTP-VERB/resource-path
+  const resourcePath = methodArn.split("/").slice(3).join("/");
+  return PUBLIC_ROUTES.some((route) => resourcePath.startsWith(route));
+};
+
 module.exports.authenticate = async (params) => {
   console.log(params);
+
+  if (isPublicEndpoint(params.methodArn)) {
+    return Promise.resolve({
+      principalId: "public",
+      policyDocument: getPolicyDocument("Allow", params.methodArn),
+      context: { scope: "public" },
+    });
+  }
+
   const token = getToken(params);
 
   const decoded = jwt.decode(token, { complete: true });
@@ -77,10 +95,10 @@ module.exports.authenticate = async (params) => {
     throw new Error("invalid token");
   }
 
-  let tokenType = 'default';
+  let tokenType = "default";
   // Determine token type based on issuer or other criteria
   if (decoded.payload.iss === tokenConfigs.external_api_token.issuer) {
-    tokenType = 'external_api_token';
+    tokenType = "external_api_token";
   }
 
   const config = tokenConfigs[tokenType];
@@ -110,7 +128,7 @@ module.exports.authenticate = async (params) => {
       context: { scope: verified.scope },
     };
   } catch (error) {
-    console.error('Token verification failed:', error);
-    throw new Error('Invalid token');
+    console.error("Token verification failed:", error);
+    throw new Error("Invalid token");
   }
 };
