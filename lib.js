@@ -3,6 +3,8 @@ require("dotenv").config({ silent: true });
 const jwksClient = require("jwks-rsa");
 const jwt = require("jsonwebtoken");
 const util = require("util");
+const Sentry = require("@sentry/serverless");
+
 
 const getPolicyDocument = (effect, resource) => {
   const policyDocument = {
@@ -69,61 +71,61 @@ const clients = {
 };
 
 module.exports.authenticate = async (params) => {
-  console.log('Event params:', JSON.stringify(params, null, 2));
+  Sentry.captureMessage('Event params:', JSON.stringify(params, null, 2));
 
   const token = getToken(params);
-  console.log('Extracted token:', token);
+  Sentry.captureMessage('Extracted token:', token);
 
   const decoded = jwt.decode(token, { complete: true });
   if (!decoded || !decoded.header) {
     throw new Error("invalid token");
   }
 
-  console.log('Decoded token:', JSON.stringify(decoded, null, 2));
+  Sentry.captureMessage('Decoded token:', JSON.stringify(decoded, null, 2));
 
   let tokenType = 'default';
   if (decoded.payload.iss === tokenConfigs.external_api_token.issuer) {
     tokenType = 'external_api_token';
   }
 
-  console.log('Determined tokenType:', tokenType);
+  Sentry.captureMessage('Determined tokenType:', tokenType);
 
   const config = tokenConfigs[tokenType];
-  console.log('Token config being used:', JSON.stringify(config, null, 2));
+  Sentry.captureMessage('Token config being used:', JSON.stringify(config, null, 2));
 
   const client = clients[tokenType];
 
   let signingKey;
   if (decoded.header.kid) {
-    console.log('Token has kid:', decoded.header.kid);
+    Sentry.captureMessage('Token has kid:', decoded.header.kid);
     const getSigningKey = util.promisify(client.getSigningKey);
     signingKey = await getSigningKey(decoded.header.kid).then(
       (key) => key.publicKey || key.rsaPublicKey
     );
-    console.log('Fetched signing key from JWKS');
+    Sentry.captureMessage('Fetched signing key from JWKS');
   } else {
     signingKey = config.publicKey.replace(/\\n/g, "\n");
-    console.log('Using static public key');
+    Sentry.captureMessage('Using static public key');
   }
 
   const jwtOptions = {
     audience: config.audience,
     issuer: config.issuer,
   };
-  console.log('JWT verification options:', jwtOptions);
+  Sentry.captureMessage('JWT verification options:', jwtOptions);
 
   try {
     const verified = await jwt.verify(token, signingKey, jwtOptions);
-    console.log('JWT verified payload:', JSON.stringify(verified, null, 2));
+    Sentry.captureMessage('JWT verified payload:', JSON.stringify(verified, null, 2));
     return {
       principalId: verified.sub,
       policyDocument: getPolicyDocument("Allow", params.methodArn),
       context: { scope: verified.scope },
     };
   } catch (error) {
-    console.error('Token verification failed:', error);
-    console.error('Token issuer in token:', decoded.payload.iss);
-    console.error('Expected issuer:', config.issuer);
+    Sentry.captureMessage('Token verification failed:', error);
+    Sentry.captureMessage('Token issuer in token:', decoded.payload.iss);
+    Sentry.captureMessage('Expected issuer:', config.issuer);
     throw new Error('Invalid token');
   }
 };
