@@ -69,41 +69,52 @@ const clients = {
 };
 
 module.exports.authenticate = async (params) => {
-  console.log(params);
+  console.log('Event params:', JSON.stringify(params, null, 2));
+
   const token = getToken(params);
+  console.log('Extracted token:', token);
 
   const decoded = jwt.decode(token, { complete: true });
   if (!decoded || !decoded.header) {
     throw new Error("invalid token");
   }
 
+  console.log('Decoded token:', JSON.stringify(decoded, null, 2));
+
   let tokenType = 'default';
-  // Determine token type based on issuer or other criteria
   if (decoded.payload.iss === tokenConfigs.external_api_token.issuer) {
     tokenType = 'external_api_token';
   }
 
+  console.log('Determined tokenType:', tokenType);
+
   const config = tokenConfigs[tokenType];
+  console.log('Token config being used:', JSON.stringify(config, null, 2));
+
   const client = clients[tokenType];
 
   let signingKey;
-
-  // If a kid was provided, this comes from Auth0. Get the public key from the authorization server
   if (decoded.header.kid) {
+    console.log('Token has kid:', decoded.header.kid);
     const getSigningKey = util.promisify(client.getSigningKey);
     signingKey = await getSigningKey(decoded.header.kid).then(
       (key) => key.publicKey || key.rsaPublicKey
     );
+    console.log('Fetched signing key from JWKS');
   } else {
     signingKey = config.publicKey.replace(/\\n/g, "\n");
+    console.log('Using static public key');
   }
+
   const jwtOptions = {
     audience: config.audience,
     issuer: config.issuer,
   };
+  console.log('JWT verification options:', jwtOptions);
 
   try {
     const verified = await jwt.verify(token, signingKey, jwtOptions);
+    console.log('JWT verified payload:', JSON.stringify(verified, null, 2));
     return {
       principalId: verified.sub,
       policyDocument: getPolicyDocument("Allow", params.methodArn),
@@ -111,6 +122,8 @@ module.exports.authenticate = async (params) => {
     };
   } catch (error) {
     console.error('Token verification failed:', error);
+    console.error('Token issuer in token:', decoded.payload.iss);
+    console.error('Expected issuer:', config.issuer);
     throw new Error('Invalid token');
   }
 };
