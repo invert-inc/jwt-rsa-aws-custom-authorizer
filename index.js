@@ -8,14 +8,15 @@ Sentry.AWSLambda.init({
 
 let data;
 
-module.exports.handler = Sentry.AWSLambda.wrapHandler(async (event, context) => {
+module.exports.handler = async (event, context) => {
+  console.log("Event received:", JSON.stringify(event, null, 2));
   try {
     data = await lib.authenticate(event);
   }
   catch (err) {
-      console.error(err);
-      Sentry.captureException(err);
+      console.error('Caught error:', err);
       return context.fail("Unauthorized");
   }
   return data;
-});
+};
+
